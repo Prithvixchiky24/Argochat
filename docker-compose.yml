@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # Main ARGO AI application
+  argoai:
+    build: .
+    ports:
+      - "8501:8501"
+    environment:
+      - DATABASE_URL=postgresql://argoai_user:argoai_password@postgres:5432/argoai
+      - CHROMA_PERSIST_DIRECTORY=/app/data/chroma_db
+      - DEBUG=False
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./outputs:/app/outputs
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - argoai-network
+
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=argoai
+      - POSTGRES_USER=argoai_user
+      - POSTGRES_PASSWORD=argoai_password
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./config/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - argoai-network
+
+  # Redis for caching (optional)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - argoai-network
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/nginx.conf
+      - ./config/ssl:/etc/ssl/certs
+    depends_on:
+      - argoai
+    restart: unless-stopped
+    networks:
+      - argoai-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  argoai-network:
+    driver: bridge
